@@ -1,0 +1,676 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AnonRelay -- Terminal Chat</title>
+<script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
+<style>
+  * {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+  }
+
+  body {
+    background: #0a0a0a;
+    font-family: 'Courier New', 'Consolas', 'Monaco', 'Liberation Mono', monospace;
+    height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #33ff33;
+  }
+
+  body::after {
+    content: '';
+    position: fixed;
+    top: 0; left: 0; width: 100%; height: 100%;
+    background: repeating-linear-gradient(
+      0deg,
+      rgba(0,0,0,0.08) 0px,
+      rgba(0,0,0,0.08) 1px,
+      transparent 1px,
+      transparent 3px
+    );
+    pointer-events: none;
+    z-index: 9999;
+  }
+
+  .container {
+    width: 900px;
+    max-width: 95vw;
+    height: 85vh;
+    background: #0d0d0d;
+    border: 1px solid #1a3a1a;
+    box-shadow: 0 0 30px rgba(51,255,51,0.05), inset 0 0 60px rgba(0,0,0,0.8);
+    display: flex;
+    flex-direction: column;
+    position: relative;
+  }
+
+  .title-bar {
+    background: #111;
+    border-bottom: 1px solid #1a3a1a;
+    padding: 8px 16px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    user-select: none;
+    flex-shrink: 0;
+  }
+  .title-bar .title {
+    color: #33ff33;
+    font-size: 13px;
+    letter-spacing: 1px;
+  }
+  .title-bar .title span.blink {
+    animation: blink 1s step-end infinite;
+  }
+  .title-bar .status {
+    font-size: 11px;
+    color: #1a6b1a;
+  }
+  .title-bar .status.online { color: #33ff33; }
+  .title-bar .status.warning { color: #ffb833; animation: pulse 1.5s ease-in-out infinite; }
+  .title-bar .controls {
+    display: flex;
+    gap: 6px;
+  }
+  .title-bar .controls span {
+    display: inline-block;
+    width: 10px; height: 10px;
+    border-radius: 50%;
+    background: #1a3a1a;
+  }
+  .title-bar .controls span.close { background: #3a1a1a; }
+  .title-bar .controls span.minimize { background: #3a3a1a; }
+
+  .display-area {
+    flex: 1;
+    overflow-y: auto;
+    padding: 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    scrollbar-width: thin;
+    scrollbar-color: #1a3a1a transparent;
+  }
+  .display-area::-webkit-scrollbar { width: 4px; }
+  .display-area::-webkit-scrollbar-track { background: transparent; }
+  .display-area::-webkit-scrollbar-thumb { background: #1a3a1a; }
+
+  .cursor-line {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    margin-top: 4px;
+  }
+  .cursor-line .prompt-sym { color: #33ff33; }
+  .cursor-line input {
+    background: transparent;
+    border: none;
+    outline: none;
+    color: #33ff33;
+    font-family: 'Courier New', 'Consolas', 'Monaco', 'Liberation Mono', monospace;
+    font-size: 13px;
+    flex: 1;
+    caret-color: #33ff33;
+  }
+  .cursor-line input::placeholder { color: #1a4a1a; }
+
+  .msg {
+    font-size: 13px;
+    line-height: 1.6;
+    word-break: break-word;
+  }
+  .msg .timestamp {
+    color: #1a6b1a;
+    margin-right: 8px;
+  }
+  .msg .sender {
+    color: #33ff33;
+    font-weight: 700;
+    margin-right: 6px;
+  }
+  .msg .sender.remote { color: #ffb833; }
+  .msg .text { color: #c0c0c0; }
+  .msg.system { color: #1a6b1a; font-style: italic; }
+  .msg.system .text { color: #1a6b1a; }
+  .msg.error .text { color: #cc3333; }
+
+  .input-area {
+    border-top: 1px solid #1a3a1a;
+    padding: 10px 16px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-shrink: 0;
+    background: #0a0a0a;
+  }
+  .input-area .prompt {
+    color: #33ff33;
+    font-size: 13px;
+    white-space: nowrap;
+  }
+  .input-area input {
+    flex: 1;
+    background: transparent;
+    border: none;
+    outline: none;
+    color: #33ff33;
+    font-family: 'Courier New', 'Consolas', 'Monaco', 'Liberation Mono', monospace;
+    font-size: 13px;
+    caret-color: #33ff33;
+  }
+  .input-area input::placeholder { color: #1a4a1a; }
+  .input-area input:disabled { opacity: 0.3; }
+  .input-area .send-btn {
+    background: transparent;
+    border: 1px solid #1a3a1a;
+    color: #33ff33;
+    font-family: 'Courier New', 'Consolas', 'Monaco', 'Liberation Mono', monospace;
+    font-size: 11px;
+    padding: 4px 10px;
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+  .input-area .send-btn:hover {
+    background: #1a3a1a;
+    border-color: #33ff33;
+  }
+  .input-area .send-btn:disabled {
+    opacity: 0.3;
+    cursor: not-allowed;
+  }
+
+  .link-bar {
+    border-top: 1px solid #1a3a1a;
+    padding: 8px 16px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-shrink: 0;
+    background: #080808;
+  }
+  .link-bar .label {
+    color: #1a6b1a;
+    font-size: 11px;
+    white-space: nowrap;
+  }
+  .link-bar .link-display {
+    flex: 1;
+    color: #ffb833;
+    font-size: 11px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .link-bar .copy-btn {
+    background: transparent;
+    border: 1px solid #1a3a1a;
+    color: #33ff33;
+    font-family: 'Courier New', 'Consolas', 'Monaco', 'Liberation Mono', monospace;
+    font-size: 10px;
+    padding: 3px 8px;
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+  .link-bar .copy-btn:hover {
+    background: #1a3a1a;
+    border-color: #33ff33;
+  }
+
+  .callout {
+    border: 1px solid #1a3a1a;
+    background: #0d120d;
+    padding: 12px 16px;
+    margin: 8px 0;
+    font-size: 12px;
+    color: #33ff33;
+  }
+  .callout .arrow {
+    color: #1a6b1a;
+    margin-right: 6px;
+  }
+
+  .sep {
+    border: none;
+    border-top: 1px dotted #1a3a1a;
+    margin: 6px 0;
+  }
+
+  .hidden { display: none !important; }
+  .fade-in {
+    animation: fadeIn 0.3s ease forwards;
+  }
+  .line { color: #33ff33; opacity: 0.9; font-size: 13px; margin: 2px 0; }
+  .line.dim { color: #1a6b1a; }
+
+  @keyframes blink {
+    50% { opacity: 0; }
+  }
+  @keyframes fadeIn {
+    from { opacity: 0; transform: translateY(-4px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+  @keyframes pulse {
+    0%, 100% { opacity: 0.4; }
+    50% { opacity: 1; }
+  }
+
+  @media (max-width: 600px) {
+    .container { height: 95vh; max-width: 100vw; }
+    .title-bar .title { font-size: 11px; }
+    .msg { font-size: 12px; }
+    .input-area input { font-size: 12px; }
+    .display-area { padding: 12px; }
+  }
+</style>
+</head>
+<body>
+
+<div class="container" id="app">
+  <div class="title-bar">
+    <div class="title">
+      [anon-relay@hackerai]~$ <span class="blink">_</span>
+    </div>
+    <div class="status" id="status-display">INIT</div>
+    <div class="controls">
+      <span class="minimize"></span>
+      <span></span>
+      <span class="close"></span>
+    </div>
+  </div>
+
+  <div class="display-area" id="display-area"></div>
+
+  <div class="link-bar hidden" id="link-bar">
+    <span class="label">// LINK</span>
+    <span class="link-display" id="link-display"></span>
+    <button class="copy-btn" id="copy-btn">[COPY]</button>
+  </div>
+
+  <div class="input-area" id="input-area">
+    <span class="prompt" id="prompt">$></span>
+    <input type="text" id="msg-input" placeholder="type a message..." disabled />
+    <button class="send-btn" id="send-btn" disabled>[SEND]</button>
+  </div>
+</div>
+
+<script>
+(function() {
+  'use strict';
+
+  const display  = document.getElementById('display-area');
+  const input    = document.getElementById('msg-input');
+  const sendBtn  = document.getElementById('send-btn');
+  const promptEl = document.getElementById('prompt');
+  const statusEl = document.getElementById('status-display');
+  const linkDisplay = document.getElementById('link-display');
+  const linkBar     = document.getElementById('link-bar');
+  const copyBtn     = document.getElementById('copy-btn');
+
+  let state = 'boot';
+  let roomId = null;
+  let peer = null;
+  let conn = null;
+  let myPeerId = null;
+  let isCreator = false;
+  let remoteConnected = false;
+
+  function ts() {
+    var d = new Date();
+    return ('0' + d.getHours()).slice(-2) + ':' + ('0' + d.getMinutes()).slice(-2);
+  }
+
+  function scrollDown() {
+    requestAnimationFrame(function() {
+      display.scrollTop = display.scrollHeight;
+    });
+  }
+
+  function setStatus(text, cls) {
+    statusEl.textContent = text;
+    statusEl.className = 'status' + (cls ? ' ' + cls : '');
+  }
+
+  function writeRaw(html) {
+    var div = document.createElement('div');
+    div.innerHTML = html;
+    div.className = 'fade-in';
+    display.appendChild(div);
+    scrollDown();
+  }
+
+  function writeMsg(type, sender, text, senderClass) {
+    var t = ts();
+    var senderDisplay = sender ? '<span class="sender ' + (senderClass || '') + '">' + sender + '</span>' : '';
+    var cls = type === 'system' ? 'msg system' : type === 'error' ? 'msg error' : 'msg';
+    writeRaw('<div class="' + cls + '"><span class="timestamp">[' + t + ']</span>' + senderDisplay + '<span class="text">' + text + '</span></div>');
+  }
+
+  function writeBoot(line, dim) {
+    writeRaw('<div class="line' + (dim ? ' dim' : '') + '">' + line + '</div>');
+  }
+
+  function clearDisplay() {
+    display.innerHTML = '';
+  }
+
+  function enableChat() {
+    input.disabled = false;
+    sendBtn.disabled = false;
+    input.placeholder = 'type a message...';
+    input.focus();
+    promptEl.textContent = 'YOU>';
+  }
+
+  function disableChat(reason) {
+    input.disabled = true;
+    sendBtn.disabled = true;
+    input.placeholder = reason || 'waiting...';
+    promptEl.textContent = '$>';
+  }
+
+  function showBoot() {
+    clearDisplay();
+    state = 'boot';
+    linkBar.classList.add('hidden');
+    disableChat('type a command...');
+    setStatus('BOOT', '');
+
+    var lines = [
+      '[ ok ] Initializing kernel modules...',
+      '[ ok ] Loading network stack...',
+      '[ ok ] Generating ephemeral identity...',
+      '[ ok ] Connecting to relay signal broker...',
+    ];
+
+    var i = 0;
+    function printNext() {
+      if (i < lines.length) {
+        writeBoot(lines[i], false);
+        i++;
+        setTimeout(printNext, 120);
+      } else {
+        writeBoot('');
+        writeBoot('------------------------------------------------');
+        writeBoot('  ANON-RELAY v2.0  --  Anonymous Terminal Chat');
+        writeBoot('  P2P encrypted. No logs. No tracking.');
+        writeBoot('  Signaling via PeerJS cloud broker.');
+        writeBoot('------------------------------------------------');
+        writeBoot('');
+        writeBoot('  Commands:');
+        writeBoot('    /create          Generate an anonymous room link');
+        writeBoot('    /join <code>     Join an existing room by code');
+        writeBoot('');
+        setTimeout(function() {
+          writeRaw('<div class="callout"><span class="arrow">>></span> TYPE <strong>/create</strong> TO GENERATE A LINK, OR <strong>/join &lt;CODE&gt;</strong> TO CONNECT</div>');
+          writeBoot('');
+          writeRaw('<div class="cursor-line"><span class="prompt-sym">$></span><input type="text" id="boot-input" placeholder="type a command..." autofocus /></div>');
+          var bi = document.getElementById('boot-input');
+          if (bi) {
+            bi.focus();
+            bi.addEventListener('keydown', handleBootKey);
+          }
+          setStatus('AWAITING INPUT', '');
+          scrollDown();
+        }, 200);
+      }
+    }
+    printNext();
+  }
+
+  function handleBootKey(e) {
+    if (e.key === 'Enter') {
+      var val = e.target.value.trim();
+      if (!val) return;
+      writeRaw('<div class="line">$> ' + val + '</div>');
+      e.target.value = '';
+
+      var parts = val.split(/\s+/);
+      var cmd = parts[0].toLowerCase();
+
+      if (cmd === '/create') {
+        createRoom();
+      } else if (cmd === '/join' && parts[1]) {
+        joinRoom(parts[1]);
+      } else if (cmd === '/retry' && roomId && !isCreator) {
+        writeMsg('system', '', 'Retrying connection...');
+        if (peer) { peer.destroy(); peer = null; }
+        initPeer(roomId, false);
+      } else if (cmd === '/help') {
+        writeRaw('<div class="callout">COMMANDS: /create | /join &lt;code&gt; | /retry | /help</div>');
+        scrollDown();
+        setTimeout(function() {
+          var bi = document.getElementById('boot-input');
+          if (bi) bi.focus();
+        }, 50);
+      } else {
+        writeRaw('<div class="msg error"><span class="text">Unknown command. Try /create or /join &lt;code&gt;</span></div>');
+        setTimeout(function() {
+          var bi = document.getElementById('boot-input');
+          if (bi) bi.focus();
+        }, 50);
+      }
+    }
+  }
+
+  function generateRoomId() {
+    var chars = 'abcdefghijklmnopqrstuvwxyz0123456789';
+    var id = '';
+    for (var i = 0; i < 8; i++) {
+      id += chars.charAt(Math.floor(Math.random() * chars.length));
+    }
+    return id;
+  }
+
+  function createRoom() {
+    roomId = generateRoomId();
+    isCreator = true;
+    var path = window.location.pathname.replace(/\/$/, '');
+    var url = window.location.origin + path + '#' + roomId;
+    linkDisplay.textContent = url;
+    linkBar.classList.remove('hidden');
+    setStatus('INITIALIZING PEER', 'warning');
+    clearDisplay();
+    state = 'lobby';
+
+    writeRaw('<div class="msg system"><span class="timestamp">[' + ts() + ']</span><span class="text">Generating peer identity...</span></div>');
+    disableChat('initializing...');
+    initPeer(roomId, true);
+  }
+
+  function joinRoom(code) {
+    var clean = code.replace(/^#/, '');
+    roomId = clean;
+    isCreator = false;
+    var path = window.location.pathname.replace(/\/$/, '');
+    linkDisplay.textContent = window.location.origin + path + '#' + roomId;
+    linkBar.classList.remove('hidden');
+    clearDisplay();
+    state = 'lobby';
+
+    writeRaw('<div class="msg system"><span class="timestamp">[' + ts() + ']</span><span class="text">Joining room ' + roomId + '...</span></div>');
+    disableChat('connecting...');
+    setStatus('CONNECTING', 'warning');
+    initPeer(roomId, false);
+    window.location.hash = roomId;
+  }
+
+  function initPeer(room, creator) {
+    if (peer) {
+      peer.destroy();
+      peer = null;
+    }
+
+    var peerId = creator ? room : undefined;
+
+    peer = new Peer(peerId, { debug: 0 });
+
+    peer.on('open', function(id) {
+      myPeerId = id;
+      writeMsg('system', '', 'Peer identity established: ' + id);
+
+      if (creator) {
+        setStatus('WAITING FOR PEER', 'warning');
+        writeRaw('<div class="callout"><span class="arrow">>></span> SHARE THIS LINK WITH YOUR TARGET. WHEN THEY OPEN IT, THE CHAT WILL BEGIN.</div>');
+        writeRaw('<hr class="sep">');
+        disableChat('waiting for peer...');
+      } else {
+        writeMsg('system', '', 'Connecting to target peer: ' + room + '...');
+        setStatus('CONNECTING TO PEER', 'warning');
+        conn = peer.connect(room, { reliable: true, serialization: 'json' });
+        setupConnection(conn);
+      }
+    });
+
+    peer.on('connection', function(incomingConn) {
+      writeMsg('system', '', 'Incoming connection from remote peer...');
+      conn = incomingConn;
+      setupConnection(conn);
+    });
+
+    peer.on('error', function(err) {
+      console.error('PeerJS error:', err);
+      if (err.type === 'peer-unavailable') {
+        writeMsg('error', '', 'Peer "' + room + '" not found. Make sure the creator opened the link first.');
+        setStatus('PEER UNAVAILABLE', '');
+        disableChat('peer not found...');
+        writeRaw('<div class="callout"><span class="arrow">>></span> TYPE <strong>/retry</strong> TO TRY CONNECTING AGAIN</div>');
+      } else if (err.type === 'unavailable-id') {
+        writeMsg('error', '', 'Room ID already taken. Generating new room...');
+        if (creator) setTimeout(createRoom, 1000);
+      } else if (err.type === 'network') {
+        writeMsg('error', '', 'Network error. Check your internet connection.');
+        setStatus('NETWORK ERROR', '');
+      } else {
+        writeMsg('error', '', 'Peer error: ' + err.type + (err.message ? ' - ' + err.message : ''));
+      }
+    });
+
+    peer.on('disconnected', function() {
+      writeMsg('system', '', 'Disconnected from signal broker. Attempting reconnect...');
+      setStatus('RECONNECTING', 'warning');
+      if (peer && !peer.destroyed) peer.reconnect();
+    });
+
+    peer.on('close', function() {
+      writeMsg('system', '', 'Peer connection closed.');
+      setStatus('CLOSED', '');
+      remoteConnected = false;
+      disableChat('connection closed...');
+    });
+  }
+
+  function setupConnection(c) {
+    if (!c) return;
+
+    c.on('open', function() {
+      remoteConnected = true;
+      state = 'connected';
+      setStatus('CONNECTED', 'online');
+      writeMsg('system', '', 'Secure P2P channel established. You are anonymous.');
+      enableChat();
+      writeRaw('<hr class="sep">');
+    });
+
+    c.on('data', function(data) {
+      var text = (typeof data === 'object' && data.text) ? data.text : (typeof data === 'string' ? data : '');
+      if (text) writeMsg('chat', 'TARGET', text, 'remote');
+    });
+
+    c.on('close', function() {
+      remoteConnected = false;
+      state = 'lobby';
+      setStatus('DISCONNECTED', '');
+      writeMsg('system', '', 'Peer disconnected.');
+      disableChat('peer disconnected...');
+    });
+
+    c.on('error', function(err) {
+      console.error('Data connection error:', err);
+      writeMsg('error', '', 'Connection error.');
+    });
+  }
+
+  function sendMessage() {
+    var text = input.value.trim();
+    if (!text || !conn || !remoteConnected) return;
+    conn.send({ text: text });
+    writeMsg('chat', 'YOU', text, '');
+    input.value = '';
+    input.focus();
+  }
+
+  copyBtn.addEventListener('click', function() {
+    var url = linkDisplay.textContent;
+    navigator.clipboard.writeText(url).then(function() {
+      copyBtn.textContent = '[COPIED]';
+      setTimeout(function() { copyBtn.textContent = '[COPY]'; }, 2000);
+    }).catch(function() {
+      var ta = document.createElement('textarea');
+      ta.value = url;
+      document.body.appendChild(ta);
+      ta.select();
+      document.execCommand('copy');
+      document.body.removeChild(ta);
+      copyBtn.textContent = '[COPIED]';
+      setTimeout(function() { copyBtn.textContent = '[COPY]'; }, 2000);
+    });
+  });
+
+  input.addEventListener('keydown', function(e) {
+    if (e.key === 'Enter') { e.preventDefault(); sendMessage(); }
+  });
+  sendBtn.addEventListener('click', sendMessage);
+
+  function checkHash() {
+    var hash = window.location.hash.slice(1);
+    if (hash && hash.length >= 6) {
+      setTimeout(function() { joinRoom(hash); }, 1200);
+      return true;
+    }
+    return false;
+  }
+
+  function init() {
+    if (!checkHash()) {
+      showBoot();
+    } else {
+      clearDisplay();
+      writeBoot('[ ok ] Anonymous relay starting...');
+      writeBoot('[ ok ] Detected room link in URL.');
+      writeBoot('[ ok ] Auto-joining...');
+      linkBar.classList.remove('hidden');
+      setStatus('AUTO-JOINING', 'warning');
+    }
+  }
+
+  init();
+
+  window.addEventListener('hashchange', function() {
+    var hash = window.location.hash.slice(1);
+    if (hash && hash.length >= 6 && hash !== roomId) {
+      if (confirm('[ANON-RELAY] Switch to room ' + hash + '?')) {
+        if (conn) { conn.close(); conn = null; }
+        if (peer) { peer.destroy(); peer = null; }
+        remoteConnected = false;
+        joinRoom(hash);
+      }
+    }
+  });
+
+  window.ANON_RELAY = {
+    createRoom: createRoom,
+    joinRoom: joinRoom,
+    sendMessage: sendMessage,
+    getState: function() { return { state: state, roomId: roomId, connected: remoteConnected, peerId: myPeerId }; }
+  };
+
+  console.log('%c[ANON-RELAY]','color:#33ff33',' Terminal chat loaded. Use window.ANON_RELAY to control programmatically.');
+})();
+</script>
+</body>
+</html>
