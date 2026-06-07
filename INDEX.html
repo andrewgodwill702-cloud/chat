@@ -3,7 +3,8 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>AnonRelay — Terminal Chat</title>
+<title>AnonRelay -- Terminal Chat</title>
+<script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
 <style>
   @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&display=swap');
 
@@ -23,7 +24,6 @@
     color: #33ff33;
   }
 
-  /* CRT scanline overlay */
   body::after {
     content: '';
     position: fixed;
@@ -51,7 +51,6 @@
     position: relative;
   }
 
-  /* Title bar */
   .title-bar {
     background: #111;
     border-bottom: 1px solid #1a3a1a;
@@ -75,6 +74,7 @@
     color: #1a6b1a;
   }
   .title-bar .status.online { color: #33ff33; }
+  .title-bar .status.warning { color: #ffb833; animation: pulse 1.5s ease-in-out infinite; }
   .title-bar .controls {
     display: flex;
     gap: 6px;
@@ -88,7 +88,6 @@
   .title-bar .controls span.close { background: #3a1a1a; }
   .title-bar .controls span.minimize { background: #3a3a1a; }
 
-  /* Main display area */
   .display-area {
     flex: 1;
     overflow-y: auto;
@@ -103,7 +102,6 @@
   .display-area::-webkit-scrollbar-track { background: transparent; }
   .display-area::-webkit-scrollbar-thumb { background: #1a3a1a; }
 
-  /* Boot / landing screen */
   #boot-screen {
     display: flex;
     flex-direction: column;
@@ -112,14 +110,14 @@
   }
   #boot-screen .line { color: #33ff33; opacity: 0.9; }
   #boot-screen .line.dim { color: #1a6b1a; }
-  #boot-screen .line.prompt { color: #33ff33; }
-  #boot-screen .cursor-line {
+  .cursor-line {
     display: flex;
     align-items: center;
     gap: 4px;
+    margin-top: 4px;
   }
-  #boot-screen .cursor-line .prompt-sym { color: #33ff33; }
-  #boot-screen .cursor-line input {
+  .cursor-line .prompt-sym { color: #33ff33; }
+  .cursor-line input {
     background: transparent;
     border: none;
     outline: none;
@@ -129,9 +127,8 @@
     flex: 1;
     caret-color: #33ff33;
   }
-  #boot-screen .cursor-line input::placeholder { color: #1a4a1a; }
+  .cursor-line input::placeholder { color: #1a4a1a; }
 
-  /* Chat messages */
   .msg {
     font-size: 13px;
     line-height: 1.6;
@@ -150,10 +147,8 @@
   .msg .text { color: #c0c0c0; }
   .msg.system { color: #1a6b1a; font-style: italic; }
   .msg.system .text { color: #1a6b1a; }
-  .msg.error { color: #8a1a1a; }
   .msg.error .text { color: #cc3333; }
 
-  /* Input area */
   .input-area {
     border-top: 1px solid #1a3a1a;
     padding: 10px 16px;
@@ -199,7 +194,6 @@
     cursor: not-allowed;
   }
 
-  /* Link display bar */
   .link-bar {
     border-top: 1px solid #1a3a1a;
     padding: 8px 16px;
@@ -237,7 +231,6 @@
     border-color: #33ff33;
   }
 
-  /* Action callout */
   .callout {
     border: 1px solid #1a3a1a;
     background: #0d120d;
@@ -251,14 +244,12 @@
     margin-right: 6px;
   }
 
-  /* Separator */
   .sep {
     border: none;
     border-top: 1px dotted #1a3a1a;
     margin: 6px 0;
   }
 
-  /* Utility */
   .hidden { display: none !important; }
   .fade-in {
     animation: fadeIn 0.3s ease forwards;
@@ -275,9 +266,7 @@
     0%, 100% { opacity: 0.4; }
     50% { opacity: 1; }
   }
-  .pulse { animation: pulse 1.5s ease-in-out infinite; }
 
-  /* responsive */
   @media (max-width: 600px) {
     .container { height: 95vh; max-width: 100vw; }
     .title-bar .title { font-size: 11px; }
@@ -290,12 +279,11 @@
 <body>
 
 <div class="container" id="app">
-  <!-- Title bar -->
   <div class="title-bar">
     <div class="title">
       [anon-relay@hackerai]~$ <span class="blink">_</span>
     </div>
-    <div class="status" id="status-display">DISCONNECTED</div>
+    <div class="status" id="status-display">INIT</div>
     <div class="controls">
       <span class="minimize"></span>
       <span></span>
@@ -303,20 +291,17 @@
     </div>
   </div>
 
-  <!-- Display area (chat / boot) -->
   <div class="display-area" id="display-area"></div>
 
-  <!-- Link bar (shown after room creation) -->
-  <div class="link-bar" id="link-bar">
+  <div class="link-bar hidden" id="link-bar">
     <span class="label">// LINK</span>
     <span class="link-display" id="link-display"></span>
     <button class="copy-btn" id="copy-btn">[COPY]</button>
   </div>
 
-  <!-- Input area -->
   <div class="input-area" id="input-area">
     <span class="prompt" id="prompt">$></span>
-    <input type="text" id="msg-input" placeholder="type a message..." autofocus disabled />
+    <input type="text" id="msg-input" placeholder="type a message..." disabled />
     <button class="send-btn" id="send-btn" disabled>[SEND]</button>
   </div>
 </div>
@@ -325,7 +310,6 @@
 (function() {
   'use strict';
 
-  // ---- DOM refs ----
   const display  = document.getElementById('display-area');
   const input    = document.getElementById('msg-input');
   const sendBtn  = document.getElementById('send-btn');
@@ -335,16 +319,14 @@
   const linkBar     = document.getElementById('link-bar');
   const copyBtn     = document.getElementById('copy-btn');
 
-  // ---- State ----
-  let state = 'boot';          // boot | lobby | connected
-  let roomId = null;           // the hash
+  let state = 'boot';
+  let roomId = null;
   let peer = null;
   let conn = null;
-  let myId = null;             // 'local' or 'remote'
+  let myPeerId = null;
+  let isCreator = false;
   let remoteConnected = false;
-  let unreadCount = 0;
 
-  // ---- Helpers ----
   function ts() {
     const d = new Date();
     return d.toTimeString().slice(0,5);
@@ -361,7 +343,6 @@
     statusEl.className = 'status' + (cls ? ' ' + cls : '');
   }
 
-  // ---- Render messages to display ----
   function writeRaw(html) {
     const div = document.createElement('div');
     div.innerHTML = html;
@@ -381,54 +362,65 @@
     writeRaw(`<div class="line ${dim ? 'dim' : ''}">${line}</div>`);
   }
 
-  // ---- Clear display ----
   function clearDisplay() {
     display.innerHTML = '';
   }
 
-  // ---- Boot sequence ----
+  function enableChat() {
+    input.disabled = false;
+    sendBtn.disabled = false;
+    input.placeholder = 'type a message...';
+    input.focus();
+    promptEl.textContent = 'YOU>';
+  }
+
+  function disableChat(reason) {
+    input.disabled = true;
+    sendBtn.disabled = true;
+    input.placeholder = reason || 'waiting...';
+    promptEl.textContent = '$>';
+  }
+
   function showBoot() {
     clearDisplay();
     state = 'boot';
     linkBar.classList.add('hidden');
-    input.disabled = true;
-    sendBtn.disabled = true;
-    promptEl.textContent = '$>';
-    setStatus('BOOTING', '');
+    disableChat('type a command...');
+    setStatus('BOOT', '');
 
     const lines = [
       '[ ok ] Initializing kernel modules...',
       '[ ok ] Loading network stack...',
       '[ ok ] Generating ephemeral identity...',
-      '[ ok ] Starting anonymous relay service...',
+      '[ ok ] Connecting to relay signal broker...',
     ];
+
     let i = 0;
     function printNext() {
       if (i < lines.length) {
         writeBoot(lines[i], false);
         i++;
-        setTimeout(printNext, 150);
+        setTimeout(printNext, 120);
       } else {
         writeBoot('');
         writeBoot('------------------------------------------------');
-        writeBoot('  ANON-RELAY v1.0  —  Anonymous Terminal Chat');
-        writeBoot('  Messages are ephemeral. No logs. No tracking.');
+        writeBoot('  ANON-RELAY v2.0  --  Anonymous Terminal Chat');
+        writeBoot('  P2P encrypted. No logs. No tracking.');
+        writeBoot('  Signaling via PeerJS cloud broker.');
         writeBoot('------------------------------------------------');
         writeBoot('');
         writeBoot('  Commands:');
-        writeBoot('    /create   —  Generate a new anonymous room');
-        writeBoot('    /join &lt;code> —  Join an existing room by code');
-        writeBoot('');
-        writeBoot('  Or scan a QR / open a link someone shared with you.');
+        writeBoot('    /create          Generate an anonymous room link');
+        writeBoot('    /join <code>     Join an existing room by code');
         writeBoot('');
         setTimeout(() => {
           writeRaw('<div class="callout"><span class="arrow">>></span> TYPE <strong>/create</strong> TO GENERATE A LINK, OR <strong>/join &lt;CODE&gt;</strong> TO CONNECT</div>');
           writeBoot('');
           writeRaw('<div class="cursor-line"><span class="prompt-sym">$></span><input type="text" id="boot-input" placeholder="type a command..." autofocus /></div>');
-          const bootInput = document.getElementById('boot-input');
-          if (bootInput) {
-            bootInput.focus();
-            bootInput.addEventListener('keydown', handleBootKey);
+          const bi = document.getElementById('boot-input');
+          if (bi) {
+            bi.focus();
+            bi.addEventListener('keydown', handleBootKey);
           }
           setStatus('AWAITING INPUT', '');
           scrollDown();
@@ -438,12 +430,10 @@
     printNext();
   }
 
-  // ---- Boot input handler ----
   function handleBootKey(e) {
     if (e.key === 'Enter') {
       const val = e.target.value.trim();
       if (!val) return;
-      // echo the command
       writeRaw(`<div class="line">$> ${val}</div>`);
       e.target.value = '';
 
@@ -457,7 +447,6 @@
       } else if (cmd === '/help') {
         writeRaw('<div class="callout">COMMANDS: /create | /join &lt;code&gt; | /help</div>');
         scrollDown();
-        // re-focus
         setTimeout(() => {
           const bi = document.getElementById('boot-input');
           if (bi) bi.focus();
@@ -472,63 +461,39 @@
     }
   }
 
-  // ---- Create room ----
   function createRoom() {
     roomId = generateRoomId();
+    isCreator = true;
     const url = window.location.origin + window.location.pathname + '#' + roomId;
     linkDisplay.textContent = url;
     linkBar.classList.remove('hidden');
-    setStatus('WAITING FOR PEER', 'pulse');
-
-    // Clear boot, show lobby
+    setStatus('INITIALIZING PEER', 'warning');
     clearDisplay();
     state = 'lobby';
 
-    writeRaw(`<div class="msg system"><span class="timestamp">[${ts()}]</span><span class="text">Room created. Waiting for peer...</span></div>`);
-    writeRaw(`<div class="callout"><span class="arrow">>></span> SHARE THIS LINK WITH YOUR TARGET. WHEN THEY OPEN IT, THE CHAT WILL BEGIN.</div>`);
-    writeRaw(`<hr class="sep">`);
+    writeRaw(`<div class="msg system"><span class="timestamp">[${ts()}]</span><span class="text">Generating peer identity...</span></div>`);
+    disableChat('initializing...');
 
-    // Set up local input
-    promptEl.textContent = 'YOU>';
-    input.disabled = true;
-    sendBtn.disabled = true;
-    input.placeholder = 'waiting for peer...';
-
-    // Start listening for a peer via hash
-    startSignaling(roomId, 'local');
-    myId = 'local';
-
-    // Update URL hash
-    window.location.hash = roomId;
+    initPeer(roomId, true);
   }
 
-  // ---- Join room ----
   function joinRoom(code) {
     const clean = code.replace(/^#/, '');
     roomId = clean;
-    const url = window.location.origin + window.location.pathname + '#' + roomId;
-    linkDisplay.textContent = url;
+    isCreator = false;
+    linkDisplay.textContent = window.location.origin + window.location.pathname + '#' + roomId;
     linkBar.classList.remove('hidden');
-
     clearDisplay();
     state = 'lobby';
 
     writeRaw(`<div class="msg system"><span class="timestamp">[${ts()}]</span><span class="text">Joining room ${roomId}...</span></div>`);
-    writeRaw(`<hr class="sep">`);
+    disableChat('connecting...');
+    setStatus('CONNECTING', 'warning');
 
-    promptEl.textContent = 'YOU>';
-    input.disabled = true;
-    sendBtn.disabled = true;
-    input.placeholder = 'connecting...';
-
-    setStatus('CONNECTING', 'pulse');
-    startSignaling(roomId, 'remote');
-    myId = 'remote';
-
+    initPeer(roomId, false);
     window.location.hash = roomId;
   }
 
-  // ---- Generate room ID ----
   function generateRoomId() {
     const chars = 'abcdefghijklmnopqrstuvwxyz0123456789';
     let id = '';
@@ -538,257 +503,135 @@
     return id;
   }
 
-  // ---- Simple signaling via BroadcastChannel (same-origin) + localStorage fallback ----
-  // We use a polling-based signaling channel via localStorage for cross-tab
-  // Since we want real peer-to-peer, we'll use a simple approach:
-  // Use localStorage events for signaling (works across tabs on same origin)
-  // For truly different origins/devices, we'd need a server — but for this
-  // pentest tool, we'll use a combined approach.
-
-  let signalingChannel = null;
-  let signalInterval = null;
-
-  function startSignaling(room, role) {
-    // Try BroadcastChannel first
-    try {
-      signalingChannel = new BroadcastChannel('anonrelay-' + room);
-      signalingChannel.onmessage = (e) => {
-        handleSignal(e.data, role);
-      };
-    } catch(e) {
-      // Fallback to localStorage polling
+  function initPeer(room, creator) {
+    if (peer) {
+      peer.destroy();
+      peer = null;
     }
 
-    // Also set up localStorage signaling for cross-tab
-    setupLocalStorageSignaling(room, role);
-  }
+    const peerId = creator ? room : undefined;
 
-  function setupLocalStorageSignaling(room, role) {
-    const key = 'anonrelay_signal_' + room;
+    peer = new Peer(peerId, {
+      debug: 0
+    });
 
-    // Listen for storage events (fired on other tabs)
-    window.addEventListener('storage', (e) => {
-      if (e.key === key && e.newValue) {
-        try {
-          const data = JSON.parse(e.newValue);
-          handleSignal(data, role);
-        } catch(_) {}
+    peer.on('open', function(id) {
+      myPeerId = id;
+      writeMsg('system', '', `Peer identity established: ${id}`);
+
+      if (creator) {
+        setStatus('WAITING FOR PEER', 'warning');
+        writeRaw('<div class="callout"><span class="arrow">>></span> SHARE THIS LINK WITH YOUR TARGET. WHEN THEY OPEN IT, THE CHAT WILL BEGIN.</div>');
+        writeRaw('<hr class="sep">');
+        disableChat('waiting for peer...');
+      } else {
+        writeMsg('system', '', `Connecting to target peer: ${room}...`);
+        setStatus('CONNECTING TO PEER', 'warning');
+        conn = peer.connect(room, {
+          reliable: true,
+          serialization: 'json'
+        });
+        setupConnection(conn);
       }
     });
 
-    // Send our offer/answer via localStorage
-    window.sendSignal = (data) => {
-      try {
-        localStorage.setItem(key, JSON.stringify(data));
-        // Clear it so next event fires
-        setTimeout(() => { localStorage.removeItem(key); }, 100);
-      } catch(_) {}
-    };
+    peer.on('connection', function(incomingConn) {
+      writeMsg('system', '', 'Incoming connection from remote peer...');
+      conn = incomingConn;
+      setupConnection(conn);
+    });
 
-    // If we're local (creator), broadcast our offer after a short delay
-    if (role === 'local') {
-      setTimeout(() => {
-        createOffer(room);
-      }, 500);
-    } else {
-      // remote: listen for offer
-      setTimeout(() => {
-        // Try to see if there's already data
-        try {
-          const existing = localStorage.getItem(key);
-          if (existing) {
-            const data = JSON.parse(existing);
-            handleSignal(data, role);
-          }
-        } catch(_) {}
-      }, 300);
-    }
-  }
-
-  // ---- WebRTC ----
-  let pc = null;
-  let dataChannel = null;
-  let pendingCandidates = [];
-
-  function createOffer(room) {
-    try {
-      pc = new RTCPeerConnection({
-        iceServers: [
-          { urls: 'stun:stun.l.google.com:19302' },
-          { urls: 'stun:stun1.l.google.com:19302' }
-        ]
-      });
-
-      dataChannel = pc.createDataChannel('chat', { ordered: true });
-      setupDataChannel();
-
-      pc.onicecandidate = (e) => {
-        if (e.candidate) {
-          // Send candidate via signal
-          const msg = { type: 'candidate', candidate: e.candidate, room: room };
-          if (signalingChannel) signalingChannel.postMessage(msg);
-          if (window.sendSignal) window.sendSignal(msg);
+    peer.on('error', function(err) {
+      console.error('PeerJS error:', err);
+      if (err.type === 'peer-unavailable') {
+        writeMsg('error', '', `Peer "${room}" not found. Make sure the creator opened the link first.`);
+        setStatus('PEER UNAVAILABLE', '');
+        disableChat('peer not found...');
+        writeRaw('<div class="callout"><span class="arrow">>></span> TYPE <strong>/retry</strong> TO TRY CONNECTING AGAIN</div>');
+      } else if (err.type === 'unavailable-id') {
+        writeMsg('error', '', 'Room ID already taken. Generating new room...');
+        if (creator) {
+          setTimeout(createRoom, 1000);
         }
-      };
-
-      pc.oniceconnectionstatechange = () => {
-        if (pc.iceConnectionState === 'connected' || pc.iceConnectionState === 'completed') {
-          onPeerConnected();
-        } else if (pc.iceConnectionState === 'disconnected' || pc.iceConnectionState === 'failed') {
-          onPeerDisconnected();
-        }
-      };
-
-      pc.createOffer()
-        .then(offer => pc.setLocalDescription(offer))
-        .then(() => {
-          const msg = { type: 'offer', sdp: pc.localDescription, room: room };
-          if (signalingChannel) signalingChannel.postMessage(msg);
-          if (window.sendSignal) window.sendSignal(msg);
-        })
-        .catch(err => {
-          writeMsg('error', '', 'Failed to create offer: ' + err.message);
-        });
-    } catch(err) {
-      writeMsg('error', '', 'WebRTC not supported: ' + err.message);
-    }
-  }
-
-  function handleSignal(data, role) {
-    if (!pc && data.type === 'offer') {
-      // Create peer connection for answer
-      try {
-        pc = new RTCPeerConnection({
-          iceServers: [
-            { urls: 'stun:stun.l.google.com:19302' },
-            { urls: 'stun:stun1.l.google.com:19302' }
-          ]
-        });
-
-        pc.ondatachannel = (e) => {
-          dataChannel = e.channel;
-          setupDataChannel();
-        };
-
-        pc.onicecandidate = (e) => {
-          if (e.candidate) {
-            const msg = { type: 'candidate', candidate: e.candidate, room: data.room };
-            if (signalingChannel) signalingChannel.postMessage(msg);
-            if (window.sendSignal) window.sendSignal(msg);
-          }
-        };
-
-        pc.oniceconnectionstatechange = () => {
-          if (pc.iceConnectionState === 'connected' || pc.iceConnectionState === 'completed') {
-            onPeerConnected();
-          } else if (pc.iceConnectionState === 'disconnected' || pc.iceConnectionState === 'failed') {
-            onPeerDisconnected();
-          }
-        };
-
-        pc.setRemoteDescription(new RTCSessionDescription(data.sdp))
-          .then(() => pc.createAnswer())
-          .then(answer => pc.setLocalDescription(answer))
-          .then(() => {
-            const msg = { type: 'answer', sdp: pc.localDescription, room: data.room };
-            if (signalingChannel) signalingChannel.postMessage(msg);
-            if (window.sendSignal) window.sendSignal(msg);
-          })
-          .catch(err => {
-            writeMsg('error', '', 'Failed to handle offer: ' + err.message);
-          });
-      } catch(err) {
-        writeMsg('error', '', 'WebRTC error: ' + err.message);
+      } else if (err.type === 'network') {
+        writeMsg('error', '', 'Network error. Check your internet connection.');
+        setStatus('NETWORK ERROR', '');
+      } else {
+        writeMsg('error', '', `Peer error: ${err.type}${err.message ? ' - ' + err.message : ''}`);
       }
-    } else if (data.type === 'answer' && pc && !pc.currentRemoteDescription) {
-      pc.setRemoteDescription(new RTCSessionDescription(data.sdp))
-        .catch(err => {
-          writeMsg('error', '', 'Failed to set answer: ' + err.message);
-        });
-    } else if (data.type === 'candidate' && pc && pc.remoteDescription) {
-      pc.addIceCandidate(new RTCIceCandidate(data.candidate))
-        .catch(err => {
-          // Ignore candidate errors
-        });
-    }
-  }
+    });
 
-  function setupDataChannel() {
-    if (!dataChannel) return;
-
-    dataChannel.onopen = () => {
-      onPeerConnected();
-    };
-
-    dataChannel.onclose = () => {
-      onPeerDisconnected();
-    };
-
-    dataChannel.onmessage = (e) => {
-      const msg = JSON.parse(e.data);
-      if (msg.type === 'chat') {
-        writeMsg('chat', 'TARGET', msg.text, 'remote');
-        unreadCount++;
+    peer.on('disconnected', function() {
+      writeMsg('system', '', 'Disconnected from signal broker. Attempting reconnect...');
+      setStatus('RECONNECTING', 'warning');
+      if (peer && !peer.destroyed) {
+        peer.reconnect();
       }
-    };
+    });
+
+    peer.on('close', function() {
+      writeMsg('system', '', 'Peer connection closed.');
+      setStatus('CLOSED', '');
+      remoteConnected = false;
+      disableChat('connection closed...');
+    });
   }
 
-  function onPeerConnected() {
-    if (remoteConnected) return;
-    remoteConnected = true;
-    setStatus('CONNECTED', 'online');
-    state = 'connected';
+  function setupConnection(c) {
+    if (!c) return;
 
-    writeMsg('system', '', 'Peer connected. Channel is secure.');
+    c.on('open', function() {
+      remoteConnected = true;
+      state = 'connected';
+      setStatus('CONNECTED', 'online');
+      writeMsg('system', '', 'Secure P2P channel established. You are anonymous.');
+      if (!isCreator) {
+        writeMsg('system', '', 'Connected to target. You are anonymous.');
+      }
+      enableChat();
+      writeRaw('<hr class="sep">');
+    });
 
-    // Enable input
-    input.disabled = false;
-    sendBtn.disabled = false;
-    input.placeholder = 'type a message...';
-    input.focus();
-    promptEl.textContent = 'YOU>';
+    c.on('data', function(data) {
+      if (typeof data === 'object' && data.text) {
+        writeMsg('chat', 'TARGET', data.text, 'remote');
+      } else if (typeof data === 'string') {
+        writeMsg('chat', 'TARGET', data, 'remote');
+      }
+    });
 
-    // If this was lobby, finalize
-    if (linkBar.classList.contains('hidden')) {
-      linkBar.classList.remove('hidden');
-    }
+    c.on('close', function() {
+      remoteConnected = false;
+      state = 'lobby';
+      setStatus('DISCONNECTED', '');
+      writeMsg('system', '', 'Peer disconnected.');
+      disableChat('peer disconnected...');
+    });
+
+    c.on('error', function(err) {
+      console.error('Data connection error:', err);
+      writeMsg('error', '', 'Connection error.');
+    });
   }
 
-  function onPeerDisconnected() {
-    if (!remoteConnected) return;
-    remoteConnected = false;
-    setStatus('DISCONNECTED', '');
-    state = 'lobby';
-
-    writeMsg('system', '', 'Peer disconnected. Waiting for reconnection...');
-
-    input.disabled = true;
-    sendBtn.disabled = true;
-    input.placeholder = 'peer disconnected...';
-    promptEl.textContent = '$>';
-  }
-
-  // ---- Send message ----
   function sendMessage() {
     const text = input.value.trim();
-    if (!text || !dataChannel || dataChannel.readyState !== 'open') return;
+    if (!text || !conn || !remoteConnected) return;
 
-    const payload = JSON.stringify({ type: 'chat', text: text });
-    dataChannel.send(payload);
+    const payload = { text: text };
+    conn.send(payload);
 
     writeMsg('chat', 'YOU', text, '');
     input.value = '';
     input.focus();
   }
 
-  // ---- Copy link ----
   copyBtn.addEventListener('click', () => {
     const url = linkDisplay.textContent;
     navigator.clipboard.writeText(url).then(() => {
       copyBtn.textContent = '[COPIED]';
       setTimeout(() => { copyBtn.textContent = '[COPY]'; }, 2000);
     }).catch(() => {
-      // Fallback
       const ta = document.createElement('textarea');
       ta.value = url;
       document.body.appendChild(ta);
@@ -800,7 +643,6 @@
     });
   });
 
-  // ---- Input events ----
   input.addEventListener('keydown', (e) => {
     if (e.key === 'Enter') {
       e.preventDefault();
@@ -810,60 +652,63 @@
 
   sendBtn.addEventListener('click', sendMessage);
 
-  // ---- Check hash on load for auto-join ----
   function checkHash() {
     const hash = window.location.hash.slice(1);
     if (hash && hash.length >= 6) {
-      // Auto-join
       setTimeout(() => {
         joinRoom(hash);
-      }, 800);
+      }, 1200);
       return true;
     }
     return false;
   }
 
-  // ---- Init ----
+  window.addEventListener('keydown', function retryHandler(e) {
+    const bootInput = document.getElementById('boot-input');
+    if (bootInput && document.activeElement === bootInput && e.key === 'Enter') {
+      const val = bootInput.value.trim().toLowerCase();
+      if (val === '/retry' && roomId && !isCreator) {
+        writeRaw(`<div class="line">$> /retry</div>`);
+        bootInput.value = '';
+        writeMsg('system', '', 'Retrying connection...');
+        if (peer) peer.destroy();
+        initPeer(roomId, false);
+      }
+    }
+  });
+
   function init() {
     if (!checkHash()) {
       showBoot();
     } else {
-      // Boot sequence shortened then join
       clearDisplay();
       writeBoot('[ ok ] Anonymous relay starting...');
       writeBoot('[ ok ] Detected room link in URL.');
       writeBoot('[ ok ] Auto-joining...');
-      setStatus('AUTO-JOINING', 'pulse');
       linkBar.classList.remove('hidden');
-      // The join happens via checkHash -> joinRoom after timeout
+      setStatus('AUTO-JOINING', 'warning');
     }
   }
 
   init();
 
-  // Handle hash changes (someone pastes a new link)
   window.addEventListener('hashchange', () => {
     const hash = window.location.hash.slice(1);
     if (hash && hash.length >= 6 && hash !== roomId) {
       if (confirm('[ANON-RELAY] Switch to room ' + hash + '?')) {
-        // Clean up old connection
-        if (dataChannel) dataChannel.close();
-        if (pc) pc.close();
-        pc = null;
-        dataChannel = null;
+        if (conn) { conn.close(); conn = null; }
+        if (peer) { peer.destroy(); peer = null; }
         remoteConnected = false;
-        if (signalInterval) clearInterval(signalInterval);
         joinRoom(hash);
       }
     }
   });
 
-  // Export for terminal use
   window.ANON_RELAY = {
     createRoom: createRoom,
     joinRoom: joinRoom,
     sendMessage: sendMessage,
-    getState: () => ({ state, roomId, connected: remoteConnected })
+    getState: () => ({ state, roomId, connected: remoteConnected, peerId: myPeerId })
   };
 
   console.log('%c[ANON-RELAY]','color:#33ff33',' Terminal chat loaded. Use window.ANON_RELAY to control programmatically.');
