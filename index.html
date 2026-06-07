@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <title>AnonRelay -- Terminal Chat</title>
 <script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
 <style>
@@ -12,13 +12,12 @@
     box-sizing: border-box;
   }
 
-  body {
+  html, body {
     background: #0a0a0a;
     font-family: 'Courier New', 'Consolas', 'Monaco', 'Liberation Mono', monospace;
-    height: 100vh;
-    display: flex;
-    align-items: center;
-    justify-content: center;
+    height: 100%;
+    width: 100%;
+    overflow: hidden;
     color: #33ff33;
   }
 
@@ -28,8 +27,8 @@
     top: 0; left: 0; width: 100%; height: 100%;
     background: repeating-linear-gradient(
       0deg,
-      rgba(0,0,0,0.08) 0px,
-      rgba(0,0,0,0.08) 1px,
+      rgba(0,0,0,0.06) 0px,
+      rgba(0,0,0,0.06) 1px,
       transparent 1px,
       transparent 3px
     );
@@ -38,48 +37,56 @@
   }
 
   .container {
-    width: 900px;
-    max-width: 95vw;
-    height: 85vh;
+    width: 100%;
+    height: 100dvh;
+    height: 100vh;
     background: #0d0d0d;
     border: 1px solid #1a3a1a;
     box-shadow: 0 0 30px rgba(51,255,51,0.05), inset 0 0 60px rgba(0,0,0,0.8);
     display: flex;
     flex-direction: column;
     position: relative;
+    max-width: 100%;
   }
 
   .title-bar {
     background: #111;
     border-bottom: 1px solid #1a3a1a;
-    padding: 8px 16px;
+    padding: 6px 10px;
     display: flex;
     justify-content: space-between;
     align-items: center;
     user-select: none;
     flex-shrink: 0;
+    min-height: 32px;
   }
   .title-bar .title {
     color: #33ff33;
-    font-size: 13px;
-    letter-spacing: 1px;
+    font-size: 11px;
+    letter-spacing: 0.5px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
   .title-bar .title span.blink {
     animation: blink 1s step-end infinite;
   }
   .title-bar .status {
-    font-size: 11px;
+    font-size: 10px;
     color: #1a6b1a;
+    white-space: nowrap;
+    margin: 0 4px;
   }
   .title-bar .status.online { color: #33ff33; }
   .title-bar .status.warning { color: #ffb833; animation: pulse 1.5s ease-in-out infinite; }
   .title-bar .controls {
     display: flex;
-    gap: 6px;
+    gap: 4px;
+    flex-shrink: 0;
   }
   .title-bar .controls span {
     display: inline-block;
-    width: 10px; height: 10px;
+    width: 8px; height: 8px;
     border-radius: 50%;
     background: #1a3a1a;
   }
@@ -89,14 +96,16 @@
   .display-area {
     flex: 1;
     overflow-y: auto;
-    padding: 20px;
+    overflow-x: hidden;
+    padding: 12px;
     display: flex;
     flex-direction: column;
-    gap: 4px;
+    gap: 3px;
     scrollbar-width: thin;
     scrollbar-color: #1a3a1a transparent;
+    -webkit-overflow-scrolling: touch;
   }
-  .display-area::-webkit-scrollbar { width: 4px; }
+  .display-area::-webkit-scrollbar { width: 3px; }
   .display-area::-webkit-scrollbar-track { background: transparent; }
   .display-area::-webkit-scrollbar-thumb { background: #1a3a1a; }
 
@@ -106,32 +115,52 @@
     gap: 4px;
     margin-top: 4px;
   }
-  .cursor-line .prompt-sym { color: #33ff33; }
+  .cursor-line .prompt-sym { color: #33ff33; flex-shrink: 0; }
   .cursor-line input {
     background: transparent;
     border: none;
     outline: none;
     color: #33ff33;
     font-family: 'Courier New', 'Consolas', 'Monaco', 'Liberation Mono', monospace;
-    font-size: 13px;
+    font-size: 14px;
     flex: 1;
+    min-width: 0;
     caret-color: #33ff33;
   }
   .cursor-line input::placeholder { color: #1a4a1a; }
 
+  /* Boot enter button */
+  .boot-enter-btn {
+    background: transparent;
+    border: 1px solid #1a3a1a;
+    color: #33ff33;
+    font-family: 'Courier New', 'Consolas', 'Monaco', 'Liberation Mono', monospace;
+    font-size: 11px;
+    padding: 6px 10px;
+    cursor: pointer;
+    flex-shrink: 0;
+    -webkit-tap-highlight-color: transparent;
+    touch-action: manipulation;
+  }
+  .boot-enter-btn:active {
+    background: #1a3a1a;
+    border-color: #33ff33;
+  }
+
   .msg {
-    font-size: 13px;
-    line-height: 1.6;
+    font-size: 12px;
+    line-height: 1.5;
     word-break: break-word;
   }
   .msg .timestamp {
     color: #1a6b1a;
-    margin-right: 8px;
+    margin-right: 6px;
+    white-space: nowrap;
   }
   .msg .sender {
     color: #33ff33;
     font-weight: 700;
-    margin-right: 6px;
+    margin-right: 4px;
   }
   .msg .sender.remote { color: #ffb833; }
   .msg .text { color: #c0c0c0; }
@@ -141,17 +170,19 @@
 
   .input-area {
     border-top: 1px solid #1a3a1a;
-    padding: 10px 16px;
+    padding: 8px 10px;
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: 6px;
     flex-shrink: 0;
     background: #0a0a0a;
+    min-height: 48px;
   }
   .input-area .prompt {
     color: #33ff33;
-    font-size: 13px;
+    font-size: 12px;
     white-space: nowrap;
+    flex-shrink: 0;
   }
   .input-area input {
     flex: 1;
@@ -160,7 +191,8 @@
     outline: none;
     color: #33ff33;
     font-family: 'Courier New', 'Consolas', 'Monaco', 'Liberation Mono', monospace;
-    font-size: 13px;
+    font-size: 14px;
+    min-width: 0;
     caret-color: #33ff33;
   }
   .input-area input::placeholder { color: #1a4a1a; }
@@ -170,10 +202,18 @@
     border: 1px solid #1a3a1a;
     color: #33ff33;
     font-family: 'Courier New', 'Consolas', 'Monaco', 'Liberation Mono', monospace;
-    font-size: 11px;
-    padding: 4px 10px;
+    font-size: 12px;
+    padding: 8px 14px;
     cursor: pointer;
     transition: all 0.15s;
+    flex-shrink: 0;
+    -webkit-tap-highlight-color: transparent;
+    touch-action: manipulation;
+    font-weight: bold;
+  }
+  .input-area .send-btn:active {
+    background: #1a3a1a;
+    border-color: #33ff33;
   }
   .input-area .send-btn:hover {
     background: #1a3a1a;
@@ -186,25 +226,28 @@
 
   .link-bar {
     border-top: 1px solid #1a3a1a;
-    padding: 8px 16px;
+    padding: 6px 10px;
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: 6px;
     flex-shrink: 0;
     background: #080808;
+    min-height: 36px;
   }
   .link-bar .label {
     color: #1a6b1a;
-    font-size: 11px;
+    font-size: 10px;
     white-space: nowrap;
+    flex-shrink: 0;
   }
   .link-bar .link-display {
     flex: 1;
     color: #ffb833;
-    font-size: 11px;
+    font-size: 10px;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+    min-width: 0;
   }
   .link-bar .copy-btn {
     background: transparent;
@@ -212,11 +255,13 @@
     color: #33ff33;
     font-family: 'Courier New', 'Consolas', 'Monaco', 'Liberation Mono', monospace;
     font-size: 10px;
-    padding: 3px 8px;
+    padding: 6px 10px;
     cursor: pointer;
-    transition: all 0.15s;
+    flex-shrink: 0;
+    -webkit-tap-highlight-color: transparent;
+    touch-action: manipulation;
   }
-  .link-bar .copy-btn:hover {
+  .link-bar .copy-btn:active {
     background: #1a3a1a;
     border-color: #33ff33;
   }
@@ -224,34 +269,42 @@
   .callout {
     border: 1px solid #1a3a1a;
     background: #0d120d;
-    padding: 12px 16px;
-    margin: 8px 0;
-    font-size: 12px;
+    padding: 10px 12px;
+    margin: 6px 0;
+    font-size: 11px;
     color: #33ff33;
+    line-height: 1.5;
   }
   .callout .arrow {
     color: #1a6b1a;
-    margin-right: 6px;
+    margin-right: 4px;
   }
 
   .sep {
     border: none;
     border-top: 1px dotted #1a3a1a;
-    margin: 6px 0;
+    margin: 4px 0;
   }
 
   .hidden { display: none !important; }
   .fade-in {
     animation: fadeIn 0.3s ease forwards;
   }
-  .line { color: #33ff33; opacity: 0.9; font-size: 13px; margin: 2px 0; }
+  .line {
+    color: #33ff33;
+    opacity: 0.9;
+    font-size: 12px;
+    margin: 1px 0;
+    line-height: 1.4;
+    word-break: break-word;
+  }
   .line.dim { color: #1a6b1a; }
 
   @keyframes blink {
     50% { opacity: 0; }
   }
   @keyframes fadeIn {
-    from { opacity: 0; transform: translateY(-4px); }
+    from { opacity: 0; transform: translateY(-3px); }
     to { opacity: 1; transform: translateY(0); }
   }
   @keyframes pulse {
@@ -259,12 +312,24 @@
     50% { opacity: 1; }
   }
 
-  @media (max-width: 600px) {
-    .container { height: 95vh; max-width: 100vw; }
-    .title-bar .title { font-size: 11px; }
-    .msg { font-size: 12px; }
+  @media (max-width: 600px) and (orientation: landscape) {
+    .title-bar { padding: 3px 8px; min-height: 26px; }
+    .title-bar .title { font-size: 10px; }
+    .display-area { padding: 8px; }
+    .msg { font-size: 11px; }
+    .input-area { padding: 4px 8px; min-height: 40px; }
     .input-area input { font-size: 12px; }
-    .display-area { padding: 12px; }
+    .input-area .send-btn { padding: 5px 10px; font-size: 11px; }
+    .link-bar { padding: 3px 8px; min-height: 28px; }
+    .line { font-size: 11px; }
+  }
+
+  @media (max-width: 360px) {
+    .title-bar .title { font-size: 10px; }
+    .msg { font-size: 11px; }
+    .input-area input { font-size: 12px; }
+    .input-area .send-btn { font-size: 11px; padding: 6px 10px; }
+    .line { font-size: 11px; }
   }
 </style>
 </head>
@@ -273,7 +338,7 @@
 <div class="container" id="app">
   <div class="title-bar">
     <div class="title">
-      [anon-relay@hackerai]~$ <span class="blink">_</span>
+      [anon-relay]~$ <span class="blink">_</span>
     </div>
     <div class="status" id="status-display">INIT</div>
     <div class="controls">
@@ -293,7 +358,7 @@
 
   <div class="input-area" id="input-area">
     <span class="prompt" id="prompt">$></span>
-    <input type="text" id="msg-input" placeholder="type a message..." disabled />
+    <input type="text" id="msg-input" placeholder="type a message..." disabled autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" />
     <button class="send-btn" id="send-btn" disabled>[SEND]</button>
   </div>
 </div>
@@ -302,22 +367,22 @@
 (function() {
   'use strict';
 
-  const display  = document.getElementById('display-area');
-  const input    = document.getElementById('msg-input');
-  const sendBtn  = document.getElementById('send-btn');
-  const promptEl = document.getElementById('prompt');
-  const statusEl = document.getElementById('status-display');
-  const linkDisplay = document.getElementById('link-display');
-  const linkBar     = document.getElementById('link-bar');
-  const copyBtn     = document.getElementById('copy-btn');
+  var display  = document.getElementById('display-area');
+  var input    = document.getElementById('msg-input');
+  var sendBtn  = document.getElementById('send-btn');
+  var promptEl = document.getElementById('prompt');
+  var statusEl = document.getElementById('status-display');
+  var linkDisplay = document.getElementById('link-display');
+  var linkBar     = document.getElementById('link-bar');
+  var copyBtn     = document.getElementById('copy-btn');
 
-  let state = 'boot';
-  let roomId = null;
-  let peer = null;
-  let conn = null;
-  let myPeerId = null;
-  let isCreator = false;
-  let remoteConnected = false;
+  var state = 'boot';
+  var roomId = null;
+  var peer = null;
+  var conn = null;
+  var myPeerId = null;
+  var isCreator = false;
+  var remoteConnected = false;
 
   function ts() {
     var d = new Date();
@@ -331,8 +396,10 @@
   }
 
   function setStatus(text, cls) {
-    statusEl.textContent = text;
-    statusEl.className = 'status' + (cls ? ' ' + cls : '');
+    if (statusEl) {
+      statusEl.textContent = text;
+      statusEl.className = 'status' + (cls ? ' ' + cls : '');
+    }
   }
 
   function writeRaw(html) {
@@ -345,13 +412,17 @@
 
   function writeMsg(type, sender, text, senderClass) {
     var t = ts();
-    var senderDisplay = sender ? '<span class="sender ' + (senderClass || '') + '">' + sender + '</span>' : '';
+    var senderDisplay = sender ? '<span class="sender ' + (senderClass || '') + '">' + escapeHtml(sender) + '</span>' : '';
     var cls = type === 'system' ? 'msg system' : type === 'error' ? 'msg error' : 'msg';
-    writeRaw('<div class="' + cls + '"><span class="timestamp">[' + t + ']</span>' + senderDisplay + '<span class="text">' + text + '</span></div>');
+    writeRaw('<div class="' + cls + '"><span class="timestamp">[' + t + ']</span>' + senderDisplay + '<span class="text">' + escapeHtml(text) + '</span></div>');
+  }
+
+  function escapeHtml(str) {
+    return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
   }
 
   function writeBoot(line, dim) {
-    writeRaw('<div class="line' + (dim ? ' dim' : '') + '">' + line + '</div>');
+    writeRaw('<div class="line' + (dim ? ' dim' : '') + '">' + escapeHtml(line) + '</div>');
   }
 
   function clearDisplay() {
@@ -362,8 +433,10 @@
     input.disabled = false;
     sendBtn.disabled = false;
     input.placeholder = 'type a message...';
-    input.focus();
     promptEl.textContent = 'YOU>';
+    if (!('ontouchstart' in window)) {
+      input.focus();
+    }
   }
 
   function disableChat(reason) {
@@ -376,7 +449,7 @@
   function showBoot() {
     clearDisplay();
     state = 'boot';
-    linkBar.classList.add('hidden');
+    if (linkBar) linkBar.classList.add('hidden');
     disableChat('type a command...');
     setStatus('BOOT', '');
 
@@ -392,13 +465,12 @@
       if (i < lines.length) {
         writeBoot(lines[i], false);
         i++;
-        setTimeout(printNext, 120);
+        setTimeout(printNext, 100);
       } else {
         writeBoot('');
         writeBoot('------------------------------------------------');
         writeBoot('  ANON-RELAY v2.0  --  Anonymous Terminal Chat');
         writeBoot('  P2P encrypted. No logs. No tracking.');
-        writeBoot('  Signaling via PeerJS cloud broker.');
         writeBoot('------------------------------------------------');
         writeBoot('');
         writeBoot('  Commands:');
@@ -408,15 +480,34 @@
         setTimeout(function() {
           writeRaw('<div class="callout"><span class="arrow">>></span> TYPE <strong>/create</strong> TO GENERATE A LINK, OR <strong>/join &lt;CODE&gt;</strong> TO CONNECT</div>');
           writeBoot('');
-          writeRaw('<div class="cursor-line"><span class="prompt-sym">$></span><input type="text" id="boot-input" placeholder="type a command..." autofocus /></div>');
+          writeRaw(
+            '<div class="cursor-line">' +
+              '<span class="prompt-sym">$></span>' +
+              '<input type="text" id="boot-input" placeholder="type a command..." autofocus />' +
+              '<button class="boot-enter-btn" id="boot-enter-btn">[ENTER]</button>' +
+            '</div>'
+          );
           var bi = document.getElementById('boot-input');
+          var be = document.getElementById('boot-enter-btn');
           if (bi) {
             bi.focus();
             bi.addEventListener('keydown', handleBootKey);
           }
+          if (be) {
+            be.addEventListener('click', function() {
+              // Simulate Enter key
+              var event = new KeyboardEvent('keydown', { key: 'Enter' });
+              if (bi) bi.dispatchEvent(event);
+            });
+            be.addEventListener('touchstart', function(e) {
+              e.preventDefault();
+              var event = new KeyboardEvent('keydown', { key: 'Enter' });
+              if (bi) bi.dispatchEvent(event);
+            });
+          }
           setStatus('AWAITING INPUT', '');
           scrollDown();
-        }, 200);
+        }, 150);
       }
     }
     printNext();
@@ -426,7 +517,7 @@
     if (e.key === 'Enter') {
       var val = e.target.value.trim();
       if (!val) return;
-      writeRaw('<div class="line">$> ' + val + '</div>');
+      writeRaw('<div class="line">$> ' + escapeHtml(val) + '</div>');
       e.target.value = '';
 
       var parts = val.split(/\s+/);
@@ -492,7 +583,7 @@
     clearDisplay();
     state = 'lobby';
 
-    writeRaw('<div class="msg system"><span class="timestamp">[' + ts() + ']</span><span class="text">Joining room ' + roomId + '...</span></div>');
+    writeRaw('<div class="msg system"><span class="timestamp">[' + ts() + ']</span><span class="text">Joining room ' + escapeHtml(roomId) + '...</span></div>');
     disableChat('connecting...');
     setStatus('CONNECTING', 'warning');
     initPeer(roomId, false);
@@ -606,25 +697,41 @@
 
   copyBtn.addEventListener('click', function() {
     var url = linkDisplay.textContent;
-    navigator.clipboard.writeText(url).then(function() {
-      copyBtn.textContent = '[COPIED]';
-      setTimeout(function() { copyBtn.textContent = '[COPY]'; }, 2000);
-    }).catch(function() {
-      var ta = document.createElement('textarea');
-      ta.value = url;
-      document.body.appendChild(ta);
-      ta.select();
-      document.execCommand('copy');
-      document.body.removeChild(ta);
-      copyBtn.textContent = '[COPIED]';
-      setTimeout(function() { copyBtn.textContent = '[COPY]'; }, 2000);
-    });
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(url).then(function() {
+        copyBtn.textContent = '[COPIED]';
+        setTimeout(function() { copyBtn.textContent = '[COPY]'; }, 2000);
+      }).catch(function() {
+        fallbackCopy(url);
+      });
+    } else {
+      fallbackCopy(url);
+    }
   });
+
+  function fallbackCopy(url) {
+    var ta = document.createElement('textarea');
+    ta.value = url;
+    ta.style.position = 'fixed';
+    ta.style.opacity = '0';
+    document.body.appendChild(ta);
+    ta.select();
+    try {
+      document.execCommand('copy');
+      copyBtn.textContent = '[COPIED]';
+      setTimeout(function() { copyBtn.textContent = '[COPY]'; }, 2000);
+    } catch(e) {}
+    document.body.removeChild(ta);
+  }
 
   input.addEventListener('keydown', function(e) {
     if (e.key === 'Enter') { e.preventDefault(); sendMessage(); }
   });
   sendBtn.addEventListener('click', sendMessage);
+
+  input.addEventListener('focus', function() {
+    setTimeout(scrollDown, 300);
+  });
 
   function checkHash() {
     var hash = window.location.hash.slice(1);
@@ -669,7 +776,7 @@
     getState: function() { return { state: state, roomId: roomId, connected: remoteConnected, peerId: myPeerId }; }
   };
 
-  console.log('%c[ANON-RELAY]','color:#33ff33',' Terminal chat loaded. Use window.ANON_RELAY to control programmatically.');
+  console.log('%c[ANON-RELAY]','color:#33ff33',' Terminal chat loaded.');
 })();
 </script>
 </body>
